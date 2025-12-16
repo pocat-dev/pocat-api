@@ -1,0 +1,44 @@
+# Dependencies and AdonisJS build
+node_modules
+build
+tmp
+pnpm-lock.yaml
+
+# Secrets
+.env
+.env.local
+.env.production.local
+.env.development.local
+
+# Frontend assets compiled code
+public/assets
+
+# Build tools specific
+npm-debug.log
+yarn-error.log
+
+# Editors specific
+.fleet
+.idea
+.vscode
+
+# Platform specific
+.DS_Store
+
+# Pocat.io specific
+# Storage (local files)
+storage/videos/
+storage/clips/
+storage/downloads/
+storage/thumbnails/
+storage/temp/
+
+# Logs
+*.log
+server.log
+
+# YouTube downloader temp files
+*-player-script.js
+
+# Cache
+.cache/
