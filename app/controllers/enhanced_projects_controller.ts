@@ -1,6 +1,7 @@
 import type { HttpContext } from '@adonisjs/core/http'
-import tursoService from '#services/turso_service'
+import VideoProject from '#models/video_project'
 import enhancedVideoProcessor from '#services/enhanced_video_processor'
+import env from '#start/env'
 
 export default class EnhancedProjectsController {
   // Step 1: Create project and start video download
@@ -31,22 +32,18 @@ export default class EnhancedProjectsController {
         })
       }
 
-      // Create project in database
-      const result = await tursoService.execute(`
-        INSERT INTO video_projects (
-          user_id, title, youtube_url, video_metadata, 
-          duration, thumbnail_url, status, created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, 'downloading', datetime('now'), datetime('now'))
-      `, [
-        userId,
-        title,
-        youtubeUrl,
-        JSON.stringify(videoInfo.data),
-        videoInfo.data.duration,
-        videoInfo.data.thumbnail
-      ])
+      // Create project in database using Lucid ORM
+      const project = await VideoProject.create({
+        userId: userId,
+        title: title,
+        youtubeUrl: youtubeUrl,
+        videoMetadata: JSON.stringify(videoInfo.data),
+        duration: parseInt(videoInfo.data.duration),
+        thumbnailUrl: videoInfo.data.thumbnail,
+        status: 'processing'  // Use valid status from model
+      })
 
-      const projectId = Number(result.lastInsertRowid)
+      const projectId = project.id
 
       // Start download in background
       this.downloadVideoAsync(projectId, youtubeUrl, quality)
@@ -221,21 +218,22 @@ export default class EnhancedProjectsController {
       const result = await enhancedVideoProcessor.downloadVideo(youtubeUrl, projectId, quality)
       
       if (result.success) {
-        // Update database with success
-        await tursoService.execute(`
-          UPDATE video_projects 
-          SET status = 'completed', video_file_path = ?, updated_at = datetime('now')
-          WHERE id = ?
-        `, [result.filePath, projectId])
+        // Update database with success using Lucid ORM
+        const project = await VideoProject.find(projectId)
+        if (project) {
+          project.status = 'completed'
+          project.videoFilePath = result.filePath
+          await project.save()
+        }
         
         console.log(`✅ Download completed for project ${projectId}`)
       } else {
-        // Update database with failure
-        await tursoService.execute(`
-          UPDATE video_projects 
-          SET status = 'failed', updated_at = datetime('now')
-          WHERE id = ?
-        `, [projectId])
+        // Update database with failure using Lucid ORM
+        const project = await VideoProject.find(projectId)
+        if (project) {
+          project.status = 'failed'
+          await project.save()
+        }
         
         console.log(`❌ Download failed for project ${projectId}: ${result.error}`)
       }
@@ -243,11 +241,12 @@ export default class EnhancedProjectsController {
     } catch (error) {
       console.error(`❌ Download error for project ${projectId}:`, error)
       
-      await tursoService.execute(`
-        UPDATE video_projects 
-        SET status = 'failed', updated_at = datetime('now')
-        WHERE id = ?
-      `, [projectId])
+      // Update database with failure using Lucid ORM
+      const project = await VideoProject.find(projectId)
+      if (project) {
+        project.status = 'failed'
+        await project.save()
+      }
     }
   }
 
