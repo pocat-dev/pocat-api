@@ -2,6 +2,8 @@ import ytdl from '@distube/ytdl-core'
 import ffmpeg from 'fluent-ffmpeg'
 import path from 'path'
 import fs from 'fs'
+import { YtDlpDownloader } from './yt_dlp_downloader.js'
+import puppeteerDownloader from './puppeteer_youtube_downloader.js'
 
 interface VideoQuality {
   quality: string
@@ -37,10 +39,72 @@ class EnhancedVideoProcessor {
     error?: string
   }> {
     try {
+      console.log(`📥 Starting download for project ${projectId}`)
+      
+      // Try yt-dlp first (most reliable)
+      try {
+        return await this.tryYtDlpDownload(youtubeUrl, projectId, quality)
+      } catch (ytdlpError) {
+        console.log(`❌ yt-dlp failed: ${ytdlpError.message}`)
+      }
+
+      // Fallback to ytdl-core
+      try {
+        return await this.tryYtdlCoreDownload(youtubeUrl, projectId, quality)
+      } catch (ytdlError) {
+        console.log(`❌ ytdl-core failed: ${ytdlError.message}`)
+      }
+
+      // Final fallback to Puppeteer
+      return await this.tryPuppeteerDownload(youtubeUrl, projectId, quality)
+
+    } catch (error) {
+      console.error(`❌ Download failed for project ${projectId}:`, error.message)
+      return {
+        success: false,
+        error: `Download failed: ${error.message}`
+      }
+    }
+  }
+
+  // Primary method using yt-dlp (most reliable)
+  private async tryYtDlpDownload(youtubeUrl: string, projectId: number, quality: string) {
+    const ytDlp = new YtDlpDownloader()
+    
+    try {
+      console.log(`🚀 Trying yt-dlp download...`)
+      
+      // Get video info first
+      const info = await ytDlp.getVideoInfo(youtubeUrl)
+      
+      // Download video
+      const filename = `project_${projectId}_full`
+      const filePath = await ytDlp.downloadVideo(youtubeUrl, filename)
+      
+      return {
+        success: true,
+        filePath,
+        duration: info.duration,
+        metadata: {
+          title: info.title,
+          author: info.uploader,
+          description: info.description,
+          thumbnail: info.thumbnail
+        }
+      }
+    } catch (error) {
+      throw new Error(`yt-dlp download failed: ${error.message}`)
+    }
+  }
+
+  // Fallback method using ytdl-core
+  private async tryYtdlCoreDownload(youtubeUrl: string, projectId: number, quality: string) {
+    try {
+      console.log(`🎯 Trying ytdl-core download...`)
+      
       const info = await ytdl.getInfo(youtubeUrl)
       const videoPath = path.join(this.downloadPath, `project_${projectId}_full.mp4`)
       
-      // Select quality based on preference
       let format
       try {
         format = ytdl.chooseFormat(info.formats, { 
@@ -48,17 +112,22 @@ class EnhancedVideoProcessor {
           filter: 'audioandvideo'
         })
       } catch (e) {
-        // Fallback to best available
         format = ytdl.chooseFormat(info.formats, { filter: 'audioandvideo' })
       }
 
-      return new Promise((resolve) => {
+      return new Promise((resolve, reject) => {
         const stream = ytdl(youtubeUrl, { format })
         const writeStream = fs.createWriteStream(videoPath)
         
         stream.pipe(writeStream)
         
         writeStream.on('finish', () => {
+          const stats = fs.statSync(videoPath)
+          if (stats.size === 0) {
+            reject(new Error('Downloaded file is empty'))
+            return
+          }
+          
           resolve({
             success: true,
             filePath: videoPath,
@@ -66,30 +135,46 @@ class EnhancedVideoProcessor {
             metadata: {
               title: info.videoDetails.title,
               author: info.videoDetails.author.name,
-              thumbnail: info.videoDetails.thumbnails[0]?.url,
-              viewCount: info.videoDetails.viewCount
+              description: info.videoDetails.description,
+              thumbnail: info.videoDetails.thumbnails?.[0]?.url
             }
           })
         })
         
-        writeStream.on('error', (error) => {
-          resolve({
-            success: false,
-            error: error.message
-          })
-        })
-        
-        stream.on('error', (error) => {
-          resolve({
-            success: false,
-            error: error.message
-          })
-        })
+        stream.on('error', reject)
+        writeStream.on('error', reject)
       })
+    } catch (error) {
+      throw new Error(`ytdl-core download failed: ${error.message}`)
+    }
+  }
+
+  // Final fallback method using Puppeteer
+  private async tryPuppeteerDownload(youtubeUrl: string, projectId: number, quality: string) {
+    try {
+      console.log(`🎭 Trying Puppeteer download...`)
+      const result = await puppeteerDownloader.downloadVideo(youtubeUrl, projectId, quality)
+      
+      if (result.success) {
+        // Get video info for metadata
+        const infoResult = await puppeteerDownloader.getVideoInfo(youtubeUrl)
+        
+        return {
+          success: true,
+          filePath: result.filePath,
+          duration: infoResult.data?.duration || 0,
+          metadata: infoResult.data || {}
+        }
+      } else {
+        return {
+          success: false,
+          error: `Both ytdl-core and Puppeteer failed: ${result.error}`
+        }
+      }
     } catch (error) {
       return {
         success: false,
-        error: error.message
+        error: `Puppeteer fallback failed: ${error instanceof Error ? error.message : 'Unknown error'}`
       }
     }
   }
