@@ -7,14 +7,23 @@ export default class EnhancedProjectsController {
   // Step 1: Create project and start video download
   async create({ request, response }: HttpContext) {
     try {
-      const { title, youtubeUrl, userId, quality = '720p' } = request.only([
-        'title', 'youtubeUrl', 'userId', 'quality'
+      const { title, youtubeUrl, userId, quality = '720p', downloader = 'auto' } = request.only([
+        'title', 'youtubeUrl', 'userId', 'quality', 'downloader'
       ])
 
       if (!title || !youtubeUrl || !userId) {
         return response.status(400).json({
           success: false,
           message: 'Title, YouTube URL, and User ID are required'
+        })
+      }
+
+      // Validate downloader method
+      const validDownloaders = ['auto', 'yt-dlp', 'ytdl-core', 'puppeteer']
+      if (!validDownloaders.includes(downloader)) {
+        return response.status(400).json({
+          success: false,
+          message: `Invalid downloader. Must be one of: ${validDownloaders.join(', ')}`
         })
       }
 
@@ -45,16 +54,17 @@ export default class EnhancedProjectsController {
 
       const projectId = project.id
 
-      // Start download in background
-      this.downloadVideoAsync(projectId, youtubeUrl, quality)
+      // Start download in background with selected downloader
+      this.downloadVideoAsync(projectId, youtubeUrl, quality, downloader)
 
       return response.status(201).json({
         success: true,
-        message: 'Project created, video download started',
+        message: `Project created, video download started using ${downloader}`,
         data: {
           projectId,
           title,
           status: 'downloading',
+          downloader: downloader,
           videoInfo: videoInfo.data,
           estimatedTime: '2-5 minutes depending on video length'
         }
@@ -211,11 +221,28 @@ export default class EnhancedProjectsController {
   }
 
   // Background download process
-  private async downloadVideoAsync(projectId: number, youtubeUrl: string, quality: string) {
+  private async downloadVideoAsync(projectId: number, youtubeUrl: string, quality: string, downloader: string = 'auto') {
     try {
-      console.log(`📥 Starting download for project ${projectId}`)
+      console.log(`📥 Starting download for project ${projectId} using ${downloader}`)
       
-      const result = await enhancedVideoProcessor.downloadVideo(youtubeUrl, projectId, quality)
+      let result
+      
+      // Choose download method based on downloader parameter
+      switch (downloader) {
+        case 'yt-dlp':
+          result = await enhancedVideoProcessor.tryYtDlpDownload(youtubeUrl, projectId, quality)
+          break
+        case 'ytdl-core':
+          result = await enhancedVideoProcessor.tryYtdlCoreDownload(youtubeUrl, projectId, quality)
+          break
+        case 'puppeteer':
+          result = await enhancedVideoProcessor.tryPuppeteerDownload(youtubeUrl, projectId, quality)
+          break
+        case 'auto':
+        default:
+          result = await enhancedVideoProcessor.downloadVideo(youtubeUrl, projectId, quality)
+          break
+      }
       
       if (result.success) {
         // Update database with success using Lucid ORM
@@ -226,7 +253,7 @@ export default class EnhancedProjectsController {
           await project.save()
         }
         
-        console.log(`✅ Download completed for project ${projectId}`)
+        console.log(`✅ Download completed for project ${projectId} using ${downloader}`)
       } else {
         // Update database with failure using Lucid ORM
         const project = await VideoProject.find(projectId)
@@ -235,7 +262,7 @@ export default class EnhancedProjectsController {
           await project.save()
         }
         
-        console.log(`❌ Download failed for project ${projectId}: ${result.error}`)
+        console.log(`❌ Download failed for project ${projectId} using ${downloader}: ${result.error}`)
       }
 
     } catch (error) {
