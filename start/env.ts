@@ -17,4 +17,10 @@ export default await Env.create(new URL('../', import.meta.url), {
   APP_KEY: Env.schema.string(),
   HOST: Env.schema.string({ format: 'host' }),
   LOG_LEVEL: Env.schema.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent']),
+  
+  // Database
+  DB_CONNECTION: Env.schema.string.optional(),
+  DB_DATABASE: Env.schema.string.optional(),
+  TURSO_DATABASE_URL: Env.schema.string.optional(),
+  TURSO_AUTH_TOKEN: Env.schema.string.optional(),
 })
