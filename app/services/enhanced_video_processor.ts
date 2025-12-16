@@ -68,7 +68,7 @@ class EnhancedVideoProcessor {
   }
 
   // Primary method using yt-dlp (most reliable)
-  private async tryYtDlpDownload(youtubeUrl: string, projectId: number, quality: string) {
+  async tryYtDlpDownload(youtubeUrl: string, projectId: number, quality: string) {
     const ytDlp = new YtDlpDownloader()
     
     try {
@@ -98,7 +98,7 @@ class EnhancedVideoProcessor {
   }
 
   // Fallback method using ytdl-core
-  private async tryYtdlCoreDownload(youtubeUrl: string, projectId: number, quality: string) {
+  async tryYtdlCoreDownload(youtubeUrl: string, projectId: number, quality: string) {
     try {
       console.log(`🎯 Trying ytdl-core download...`)
       
@@ -150,7 +150,7 @@ class EnhancedVideoProcessor {
   }
 
   // Final fallback method using Puppeteer
-  private async tryPuppeteerDownload(youtubeUrl: string, projectId: number, quality: string) {
+  async tryPuppeteerDownload(youtubeUrl: string, projectId: number, quality: string) {
     try {
       console.log(`🎭 Trying Puppeteer download...`)
       const result = await puppeteerDownloader.downloadVideo(youtubeUrl, projectId, quality)
