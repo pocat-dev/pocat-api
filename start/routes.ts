@@ -159,6 +159,21 @@ router.get('/storage/clips/:filename', async ({ params, response }) => {
   return response.status(404).json({ success: false, message: 'File not found' })
 })
 
+router.get('/storage/downloads/:filename', async ({ params, response }) => {
+  const filePath = path.join(process.cwd(), 'storage', 'downloads', params.filename)
+  
+  response.header('Access-Control-Allow-Origin', '*')
+  
+  if (fs.existsSync(filePath)) {
+    response.header('Content-Type', 'video/mp4')
+    response.header('Accept-Ranges', 'bytes')
+    response.header('Cache-Control', 'public, max-age=3600')
+    return response.stream(fs.createReadStream(filePath))
+  }
+  
+  return response.status(404).json({ success: false, message: 'File not found' })
+})
+
 router.get('/storage/thumbnails/:filename', async ({ params, response }) => {
   const filePath = path.join(process.cwd(), 'storage', 'thumbnails', params.filename)
   
