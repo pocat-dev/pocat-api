@@ -15,7 +15,7 @@ export class YtDlpDownloader {
     this.ytDlpPath = 'cd ../youtube-dl-test && poetry run yt-dlp'
   }
 
-  async downloadVideo(url: string, filename?: string): Promise<string> {
+  async downloadVideo(url: string, filename?: string, quality: string = '720p'): Promise<string> {
     await fs.mkdir(this.downloadDir, { recursive: true })
     
     const outputTemplate = filename 
@@ -24,7 +24,9 @@ export class YtDlpDownloader {
     
     const outputPath = path.join(this.downloadDir, outputTemplate)
     
-    const command = `${this.ytDlpPath} -f "best[height<=720]" --output "${outputPath}" "${url}"`
+    // Map quality to yt-dlp format selection
+    const formatSelector = this.getFormatSelector(quality)
+    const command = `${this.ytDlpPath} -f "${formatSelector}" --output "${outputPath}" "${url}"`
     
     try {
       const { stdout, stderr } = await execAsync(command)
@@ -47,6 +49,34 @@ export class YtDlpDownloader {
     }
   }
 
+  private getFormatSelector(quality: string): string {
+    switch (quality.toLowerCase()) {
+      case '144p':
+        return 'worst[height<=144]'
+      case '240p':
+        return 'best[height<=240]'
+      case '360p':
+        return 'best[height<=360]'
+      case '480p':
+        return 'best[height<=480]'
+      case '720p':
+        return 'best[height<=720]'
+      case '1080p':
+        return 'best[height<=1080]'
+      case '1440p':
+        return 'best[height<=1440]'
+      case '2160p':
+      case '4k':
+        return 'best[height<=2160]'
+      case 'best':
+        return 'best'
+      case 'worst':
+        return 'worst'
+      default:
+        return 'best[height<=720]' // Default to 720p
+    }
+  }
+
   async getVideoInfo(url: string): Promise<any> {
     const command = `${this.ytDlpPath} --dump-json "${url}"`
     
@@ -55,6 +85,17 @@ export class YtDlpDownloader {
       return JSON.parse(stdout)
     } catch (error) {
       throw new Error(`Failed to get video info: ${error.message}`)
+    }
+  }
+
+  async getAvailableFormats(url: string): Promise<string> {
+    const command = `${this.ytDlpPath} -F "${url}"`
+    
+    try {
+      const { stdout } = await execAsync(command)
+      return stdout
+    } catch (error) {
+      throw new Error(`Failed to get available formats: ${error.message}`)
     }
   }
 }
